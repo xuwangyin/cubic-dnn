@@ -10,24 +10,32 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import vgg
-from alexnet import AlexNet
-from alexnet import AlexNetC1
+from alexnet import alexnet
+# from alexnet import AlexNetC1
+# from AlexNetOWT import AlexNetOWT_BN
 from vgg import vgg16_bn
+from wresnet import wide_WResNet
+from resnet import resnet
 import numpy as np
 import copy
 import torch.nn.init as init
 
-model_names = sorted(name for name in vgg.__dict__
-    if name.islower() and not name.startswith("__")
-                     and name.startswith("vgg")
-                     and callable(vgg.__dict__[name]))
+# model_names = sorted(name for name in vgg.__dict__
+#     if name.islower() and not name.startswith("__")
+#                      and name.startswith("vgg")
+#                      and callable(vgg.__dict__[name]))
+model_names = ['alexnet', 'vgg16_bn', 'wide_WResNet', 'resnet']
+dataset_names = ['cifar10', 'cifar100']
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg19',
+parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg16_bn',
                     choices=model_names,
                     help='model architecture: ' + ' | '.join(model_names) +
-                    ' (default: vgg19)')
+                    ' (default: vgg16_bn)')
+parser.add_argument('--dataset', '-d', metavar='ARCH', default='cifar10',
+                    choices=['cifar10', 'cifar100'],
+                    help='dataset: ' + ' | '.join(dataset_names) +
+                    ' (default: cifar10)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=1000, type=int, metavar='N',
@@ -72,19 +80,23 @@ parser.add_argument('--approx_delta', default=0.00001, type=float,
 best_prec1 = 0
 args = parser.parse_args()
 print(args)
+if args.arch == 'vgg16_bn':
+    assert args.dataset != 'cifar100'
 
 # variable for evaluation of cubic subproblem
 m_deltas = []
 
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
-trainset = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+
+Dataset = {'cifar10': datasets.CIFAR10, 'cifar100': datasets.CIFAR100}[args.dataset]
+trainset = Dataset(root='./data', train=True, transform=transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(32, 4),
         transforms.ToTensor(),
         normalize,
     ]), download=True)
-testset = datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+testset = Dataset(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ]))
@@ -120,7 +132,20 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    model = vgg16_bn()
+    if args.arch == 'vgg16_bn':
+        model = vgg16_bn()
+    elif args.arch == 'alexnet':
+        model = alexnet(num_classes=10) if args.dataset == 'cifar10' else alexnet(num_classes=100)
+    elif args.arch == 'wide_WResNet':
+        if args.dataset == 'cifar10':
+            model = wide_WResNet(num_classes=10, depth=16, dataset='cifar10')
+        else:
+            model = wide_WResNet(num_classes=100, depth=16, dataset='cifar100')
+    elif args.arch == 'resnet':
+        if args.dataset == 'cifar10':
+            model = resnet(num_classes=10, dataset='cifar10')
+        else:
+            model = resnet(num_classes=100, dataset='cifar100')
 
     model.cuda()
 
@@ -527,8 +552,6 @@ def adjust_learning_rate(optimizer, epoch):
     lr = args.lr * (0.1 ** (epoch // 50))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
-
 
 
 def accuracy(output, target, topk=(1,)):
