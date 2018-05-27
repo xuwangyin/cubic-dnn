@@ -15,6 +15,7 @@ from wresnet import wide_WResNet
 from resnet import resnet
 import numpy as np
 import copy
+from torch.autograd import Variable
 
 
 model_names = ['alexnet', 'vgg', 'wide_resnet', 'resnet']
@@ -216,9 +217,9 @@ def cubic_step(net, optimizer, criterion, inputs_grad, targets_grad, inputs_hv, 
 
     # Gradient Descent for solving cubic sub-problem
     for epoch_c in range(args.cubic_epoch):
-        net_delta_optimizer.zero_grad()
-        net_delta_loss = criterion(net_delta.forward(inputs_hv[:10]), targets_hv[:10])
-        net_delta_loss.backward()
+        # net_delta_optimizer.zero_grad()
+        # net_delta_loss = criterion(net_delta.forward(inputs_hv[:10]), targets_hv[:10])
+        # net_delta_loss.backward()
 
         inner_product = 0.0
         for p_delta, p_grad_hv in zip(net_delta.parameters(), grad_hv):
@@ -228,7 +229,8 @@ def cubic_step(net, optimizer, criterion, inputs_grad, targets_grad, inputs_hv, 
         hv_exact = torch.autograd.grad(inner_product, net.parameters(), create_graph=True)
 
         for p_delta_net, p_hv in zip(net_delta.parameters(), hv_exact):
-            p_delta_net.grad.data = p_hv.data * 1.0
+            p_delta_net.grad = Variable(p_hv.data * 1.0)
+            # p_delta_net.grad.data = p_hv.data * 1.0
 
         # clip H*v
         torch.nn.utils.clip_grad_norm(net_delta.parameters(), 5.0)
@@ -250,15 +252,16 @@ def cubic_step(net, optimizer, criterion, inputs_grad, targets_grad, inputs_hv, 
 
         net_delta_optimizer.step()
 
-    # Take a cubic step
-    # net generate dummy grad
-    optimizer.zero_grad()
-    outputs_grad_dummy = net.forward(inputs_grad[:10].cuda())
-    loss_grad_dummy = criterion(outputs_grad_dummy, targets_grad[:10])
-    loss_grad_dummy.backward()
+    # # Take a cubic step
+    # # net generate dummy grad
+    # optimizer.zero_grad()
+    # outputs_grad_dummy = net.forward(inputs_grad[:10].cuda())
+    # loss_grad_dummy = criterion(outputs_grad_dummy, targets_grad[:10])
+    # loss_grad_dummy.backward()
 
     for param_net, param_delta in zip(net.parameters(), net_delta.parameters()):
-        param_net.grad.data = - 1.0 * param_delta.data * 1e7
+        param_net.grad = Variable(-1.0 * param_delta.data * 1e7)
+        # param_net.grad.data = - 1.0 * param_delta.data * 1e7
 
     # clip
     torch.nn.utils.clip_grad_norm(net.parameters(), 1.0)
