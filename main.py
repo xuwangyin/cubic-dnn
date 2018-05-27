@@ -10,23 +10,32 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import vgg
-from alexnet import AlexNet
-from alexnet import AlexNetC1
+from alexnet import alexnet
+# from alexnet import AlexNetC1
+# from AlexNetOWT import AlexNetOWT_BN
+from vgg import vgg16_bn
+from wresnet import wide_WResNet
+from resnet import resnet
 import numpy as np
 import copy
 import torch.nn.init as init
 
-model_names = sorted(name for name in vgg.__dict__
-    if name.islower() and not name.startswith("__")
-                     and name.startswith("vgg")
-                     and callable(vgg.__dict__[name]))
+# model_names = sorted(name for name in vgg.__dict__
+#     if name.islower() and not name.startswith("__")
+#                      and name.startswith("vgg")
+#                      and callable(vgg.__dict__[name]))
+model_names = ['alexnet', 'vgg16_bn', 'wide_WResNet', 'resnet']
+dataset_names = ['cifar10', 'cifar100']
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg19',
+parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg16_bn',
                     choices=model_names,
                     help='model architecture: ' + ' | '.join(model_names) +
-                    ' (default: vgg19)')
+                    ' (default: vgg16_bn)')
+parser.add_argument('--dataset', '-d', metavar='ARCH', default='cifar10',
+                    choices=['cifar10', 'cifar100'],
+                    help='dataset: ' + ' | '.join(dataset_names) +
+                    ' (default: cifar10)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=1000, type=int, metavar='N',
@@ -35,7 +44,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=4096,  type = int,
                     metavar='N', help='mini-batch size (default: 128)')
-parser.add_argument('--lr', '--learning-rate', default=0.9, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.5, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -54,36 +63,40 @@ parser.add_argument('--half', dest='half', action='store_true',
 parser.add_argument('--save-dir', dest='save_dir',
                     help='The directory used to save the trained models',
                     default='save_temp', type=str)
-parser.add_argument('--lr_cubic', default=0.00005, type=float, help='learning rate for cubic')
-parser.add_argument('--rc', default=0.0001, type=float, help='cauchy point')
+parser.add_argument('--lr_cubic', default=0.0005, type=float, help='learning rate for cubic')
+parser.add_argument('--rc', default=0.000001, type=float, help='cauchy point')
 parser.add_argument('--cubic_epoch', default=5, type=float, help='cubic epoch')
 parser.add_argument('--rho', default=1.0, type=float, help='second-order smoothness')
-parser.add_argument('--cubic-batch-size', default=256, type=int,
+parser.add_argument('--cubic-batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 128)')
 parser.add_argument('--cubic-weight-decay', default=5e-4, type=float,
                     metavar='W', help='weight decay (default: 5e-4)')
-parser.add_argument('--cubic-momentum', default=0.0, type=float, metavar='M',
+parser.add_argument('--cubic-momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--approx_delta', default=0.0001, type=float,
+parser.add_argument('--approx_delta', default=0.00001, type=float,
                     help='approximate parameter for Hessian-vector product')
 
 
 best_prec1 = 0
 args = parser.parse_args()
 print(args)
+if args.arch == 'vgg16_bn':
+    assert args.dataset != 'cifar100'
 
 # variable for evaluation of cubic subproblem
 m_deltas = []
 
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
-trainset = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+
+Dataset = {'cifar10': datasets.CIFAR10, 'cifar100': datasets.CIFAR100}[args.dataset]
+trainset = Dataset(root='./data', train=True, transform=transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(32, 4),
         transforms.ToTensor(),
         normalize,
     ]), download=True)
-testset = datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+testset = Dataset(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ]))
@@ -100,7 +113,7 @@ trainloader_cubic_hv = torch.utils.data.DataLoader(
 
 val_loader = torch.utils.data.DataLoader(
     testset,
-    batch_size=args.cubic_batch_size, shuffle=False,
+    batch_size=512, shuffle=False,
     num_workers=args.workers)
 
 def xavier(param):
@@ -119,12 +132,25 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    # model = vgg.__dict__[args.arch]()
-    # model = AlexNet()
-    model = AlexNetC1()
-    # model.apply(weights_init)
+    if args.arch == 'vgg16_bn':
+        model = vgg16_bn()
+    elif args.arch == 'alexnet':
+        model = alexnet(num_classes=10) if args.dataset == 'cifar10' else alexnet(num_classes=100)
+    elif args.arch == 'wide_WResNet':
+        if args.dataset == 'cifar10':
+            model = wide_WResNet(num_classes=10, depth=16, dataset='cifar10')
+        else:
+            model = wide_WResNet(num_classes=100, depth=16, dataset='cifar100')
+    elif args.arch == 'resnet':
+        if args.dataset == 'cifar10':
+            model = resnet(num_classes=10, dataset='cifar10')
+        else:
+            model = resnet(num_classes=100, dataset='cifar100')
 
     model.cuda()
+
+    init_net = copy.deepcopy(model)
+
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -138,6 +164,7 @@ def main():
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
+
     cudnn.benchmark = True
 
     # define loss function (criterion) and pptimizer
@@ -147,7 +174,7 @@ def main():
         model.half()
         criterion.half()
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=args.momentum, weight_decay=0.0001)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=args.momentum, weight_decay=0.0005)
 
     if args.evaluate:
         validate(val_loader, model, criterion)
@@ -160,7 +187,7 @@ def main():
         adjust_learning_rate(optimizer, epoch)
 
         # train for one epoch
-        cubic_train(model, criterion, optimizer, epoch)
+        cubic_train(model, init_net, criterion, optimizer, epoch)
 
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
@@ -175,26 +202,44 @@ def main():
         # }, is_best, filename=os.path.join(args.save_dir, 'checkpoint_{}.tar'.format(epoch)))
 
 
+
 def net_split_forward(net, criterion, inputs, targets, split_thresh=2048):
     # inputs: Variable on CPU
     # targets: Variable on GPU
+
+    # split parameter
+    splits = 4
     batch_size = inputs.size(0)
+    grad_avg = []
+
     if batch_size > split_thresh:
-        assert batch_size % 2 == 0
-        half = batch_size // 2
-        inputs1, targets1 = inputs[:half], targets[:half]
-        inputs2, targets2 = inputs[half:], targets[half:]
-        outputs1 = net.forward(inputs1.cuda())
-        loss1 = criterion(outputs1, targets1)
-        outputs2 = net.forward(inputs2.cuda())
-        loss2 = criterion(outputs2, targets2)
-        loss = (loss1 + loss2) / 2
-        outputs = torch.cat([outputs1, outputs2], dim=0)
+        assert batch_size % splits == 0
+        quarter = batch_size // splits
+        outputs = []
+        loss = 0.0
+        for i in range(splits):
+            inputs1, targets1 = inputs[i*quarter:(i+1)*quarter], targets[i*quarter:(i+1)*quarter]
+            outputs1 = net.forward(inputs1.cuda())
+            outputs.append(outputs1)
+            loss1 = criterion(outputs1, targets1.cuda())
+            loss += loss1
+            if i == 0:
+                grad_avg = torch.autograd.grad(loss1, net.parameters())
+                for p_avg in grad_avg:
+                    p_avg.data = 1.0 * p_avg.data / splits
+            else:
+                grad_temp = torch.autograd.grad(loss1, net.parameters())
+                for p_avg, p_temp in zip(grad_avg, grad_temp):
+                    p_avg.data += 1.0 * p_temp.data / splits
+
+        loss = 1.0 * loss / splits
+        outputs = torch.cat(outputs, dim=0)
     else:
         outputs = net.forward(inputs.cuda())
-        loss = criterion(outputs, targets)
+        loss = criterion(outputs, targets.cuda())
+        grad_avg = torch.autograd.grad(loss, net.parameters())
 
-    return outputs, loss
+    return outputs, loss, grad_avg
 
 
 def clip_gradient(optimizer, grad_clip):
@@ -208,11 +253,11 @@ def cubic_approx(net, epoch, optimizer, criterion, inputs_grad, targets_grad, in
 
     # zero the gradient
     optimizer.zero_grad()
-
     # g_t
     # Record the sub-sampled gradient
-    outputs_grad, loss_grad = net_split_forward(net, criterion, inputs_grad, targets_grad)
-    grad_cubic = torch.autograd.grad(loss_grad, net.parameters())
+    # outputs_grad, loss_grad = net_split_forward(net, criterion, inputs_grad, targets_grad)
+    # grad_cubic = torch.autograd.grad(loss_grad, net.parameters())
+    outputs_grad, loss_grad, grad_cubic = net_split_forward(net, criterion, inputs_grad, targets_grad)
 
     # Initialize the iterate, i.e., Delta
     net_delta = copy.deepcopy(net)
@@ -224,6 +269,8 @@ def cubic_approx(net, epoch, optimizer, criterion, inputs_grad, targets_grad, in
         p_delta.data = copy.deepcopy(p_cubic_grad.data)
         norm_delta += p_cubic_grad.data.norm(2) ** 2
     norm_delta = np.sqrt(norm_delta)
+    norm_grad_cubic = norm_delta
+
     # print("norm_net_delta_grad, 0, begin ", norm_delta)
 
     for p in net_delta.parameters():
@@ -241,7 +288,6 @@ def cubic_approx(net, epoch, optimizer, criterion, inputs_grad, targets_grad, in
 
     # Gradient Descent for solving cubic sub-problem
     for epoch_c in range(args.cubic_epoch):
-
         net_delta_optimizer.zero_grad()
         net_delta_loss = criterion(net_delta.forward(inputs_hv[:10]), targets_hv[:10])
         net_delta_loss.backward()
@@ -283,8 +329,21 @@ def cubic_approx(net, epoch, optimizer, criterion, inputs_grad, targets_grad, in
     loss_grad_dummy = criterion(outputs_grad_dummy, targets_grad[:10])
     loss_grad_dummy.backward()
 
+    # calculate inner product
+    norm_delta_approx = 0.0
+    for p in net_delta.parameters():
+        norm_delta_approx += p.data.norm(2) ** 2
+    norm_delta_approx = float(np.sqrt(norm_delta_approx))
+
+    # inner_product = 0.0
+    # for p_cubic_grad, p_delta_approx in zip(grad_cubic, net_delta.parameters()):
+    #     inner_product -= torch.sum(p_cubic_grad * p_delta_approx)
+    # cosin = (inner_product / (norm_delta_approx * norm_grad_cubic)).data[0]
+    # print('cosine between delta and grad_cubic: {:.8f}'.format(cosin))
+    # print('cosine between delta and grad_cubic: ', inner_product)
+
     for param_net, param_delta in zip(net.parameters(), net_delta.parameters()):
-        param_net.grad.data = - 1.0 * param_delta.data * 1e3
+        param_net.grad.data = - 1.0 * param_delta.data * 1e7
 
     # clip
     torch.nn.utils.clip_grad_norm(net.parameters(), 1.0)
@@ -294,7 +353,7 @@ def cubic_approx(net, epoch, optimizer, criterion, inputs_grad, targets_grad, in
     return outputs_grad, loss_grad
 
 
-def cubic_train(model, criterion, optimizer, epoch):
+def cubic_train(model, init_net, criterion, optimizer, epoch):
     """
         Run one train epoch
     """
@@ -342,6 +401,13 @@ def cubic_train(model, criterion, optimizer, epoch):
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
+
+        # norm_dis = 0.0
+        # for p_t, p_0 in zip(model.parameters(), init_net.parameters()):
+        #     norm_dis += (p_t.data - p_0.data).norm(2) ** 2
+        # norm_dis = np.sqrt(norm_dis)
+        # print(' Distance: ', float(norm_dis))
+
 
         if i % args.print_freq == 0:
             print(('Epoch: [{0}][{1}/{2}]\t'
@@ -454,6 +520,7 @@ def validate(val_loader, model, criterion):
     print((' * Prec@1 {top1.avg:.3f}'
           .format(top1=top1)))
 
+
     return top1.avg
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -482,7 +549,7 @@ class AverageMeter(object):
 
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 2 every 30 epochs"""
-    lr = args.lr * (0.9 ** (epoch // 50))
+    lr = args.lr * (0.1 ** (epoch // 50))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
