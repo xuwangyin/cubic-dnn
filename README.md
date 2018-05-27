@@ -1,3 +1,5 @@
+# Stochastic Cubic Adjusted Gradient Descent (SCAG)
+
 This repository contains pytorch code that produces the  Stochastic Cubic Adjusted Gradient Descent (SCAG) in the paper: [Making Use of Second-order Information: Cubic Regularization for Training DNNs](https://arxiv.org/abs/1712.03950). 
 
 This repository contains example code for ([cifar10](https://www.cs.toronto.edu/~kriz/cifar.html), [cifar100](https://www.cs.toronto.edu/~kriz/cifar.html)) using ([alexnet](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf), [vgg](https://arxiv.org/abs/1409.1556), [resnet](https://arxiv.org/abs/1512.03385), [wide_resnet](https://arxiv.org/abs/1605.07146)).
