@@ -12,3 +12,5 @@ python main.py --arch wide_resnet --dataset cifar10;
 python main.py --arch alexnet --dataset cifar100;
 python main.py --arch wide_resnet --dataset cifar100;
 ```
+## Learning rate adjustment
+The learning rate is set as 0.5 at the beginning and decay 0.1 every 50 epochs.
