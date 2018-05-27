@@ -9,10 +9,10 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from alexnet import alexnet
-from vgg import vgg16_bn
-from wresnet import wide_WResNet
-from resnet import resnet
+from models.alexnet import alexnet
+from models.vgg import vgg16_bn
+from models.wresnet import wide_WResNet
+from models.resnet import resnet
 import numpy as np
 import copy
 from torch.autograd import Variable

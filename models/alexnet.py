@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-from srelu import SRelu
+from models.srelu import SRelu
 
 
 __all__ = ['AlexNet', 'alexnet']
