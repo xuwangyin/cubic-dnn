@@ -11,8 +11,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from alexnet import alexnet
-# from alexnet import AlexNetC1
-# from AlexNetOWT import AlexNetOWT_BN
 from vgg import vgg16_bn
 from wresnet import wide_WResNet
 from resnet import resnet
@@ -24,14 +22,14 @@ import torch.nn.init as init
 #     if name.islower() and not name.startswith("__")
 #                      and name.startswith("vgg")
 #                      and callable(vgg.__dict__[name]))
-model_names = ['alexnet', 'vgg16_bn', 'wide_WResNet', 'resnet']
+model_names = ['alexnet', 'vgg', 'wide_resnet', 'resnet']
 dataset_names = ['cifar10', 'cifar100']
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg16_bn',
+parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg',
                     choices=model_names,
                     help='model architecture: ' + ' | '.join(model_names) +
-                    ' (default: vgg16_bn)')
+                    ' (default: vgg)')
 parser.add_argument('--dataset', '-d', metavar='ARCH', default='cifar10',
                     choices=['cifar10', 'cifar100'],
                     help='dataset: ' + ' | '.join(dataset_names) +
@@ -80,7 +78,7 @@ parser.add_argument('--approx_delta', default=0.00001, type=float,
 best_prec1 = 0
 args = parser.parse_args()
 print(args)
-if args.arch == 'vgg16_bn':
+if args.arch == 'vgg':
     assert args.dataset != 'cifar100'
 
 # variable for evaluation of cubic subproblem
@@ -132,11 +130,11 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    if args.arch == 'vgg16_bn':
+    if args.arch == 'vgg':
         model = vgg16_bn()
     elif args.arch == 'alexnet':
         model = alexnet(num_classes=10) if args.dataset == 'cifar10' else alexnet(num_classes=100)
-    elif args.arch == 'wide_WResNet':
+    elif args.arch == 'wide_resnet':
         if args.dataset == 'cifar10':
             model = wide_WResNet(num_classes=10, depth=16, dataset='cifar10')
         else:
