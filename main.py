@@ -9,10 +9,10 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from models.alexnet import alexnet
-from models.vgg import vgg16_bn
-from models.wresnet import wide_WResNet
-from models.resnet import resnet
+from alexnet import alexnet
+from vgg import vgg16_bn
+from wresnet import wide_WResNet
+from resnet import resnet
 import numpy as np
 import copy
 from torch.autograd import Variable
@@ -32,7 +32,7 @@ parser.add_argument('--dataset', '-d', metavar='ARCH', default='cifar10',
                     ' (default: cifar10)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=300, type=int, metavar='N',
+parser.add_argument('--epochs', default=500, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -44,7 +44,7 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
                     metavar='W', help='weight decay (default: 5e-4)')
-parser.add_argument('--print-freq', '-p', default=5, type=int,
+parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 20)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
@@ -164,8 +164,11 @@ def main():
         validate(val_loader, model, criterion)
         return
 
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[150, 225, 275], gamma=0.1)
+
     for epoch in range(args.start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch)
+        scheduler.step()
+        # adjust_learning_rate(optimizer, epoch)
 
         # train for one epoch
         cubic_train(model, criterion, optimizer, epoch)
@@ -233,7 +236,6 @@ def cubic_step(net, optimizer, criterion, inputs_grad, targets_grad, inputs_hv, 
 
         for p_delta_net, p_hv in zip(net_delta.parameters(), hv_exact):
             p_delta_net.grad = Variable(p_hv.data * 1.0)
-            # p_delta_net.grad.data = p_hv.data * 1.0
 
         # clip H*v
         torch.nn.utils.clip_grad_norm(net_delta.parameters(), 5.0)
@@ -251,20 +253,14 @@ def cubic_step(net, optimizer, criterion, inputs_grad, targets_grad, inputs_hv, 
             params_delta_net.grad.data += params_delta_net.data * args.rho * norm_delta * 1.0
 
         # clipping the gradient
-        torch.nn.utils.clip_grad_norm(net_delta.parameters(), 10.0)
+        torch.nn.utils.clip_grad_norm(net_delta.parameters(), 5.0)
 
         net_delta_optimizer.step()
 
-    # # Take a cubic step
-    # # net generate dummy grad
-    # optimizer.zero_grad()
-    # outputs_grad_dummy = net.forward(inputs_grad[:10].cuda())
-    # loss_grad_dummy = criterion(outputs_grad_dummy, targets_grad[:10])
-    # loss_grad_dummy.backward()
+    # Take a cubic step
 
     for param_net, param_delta in zip(net.parameters(), net_delta.parameters()):
         param_net.grad = Variable(-1.0 * param_delta.data * 1e7)
-        # param_net.grad.data = - 1.0 * param_delta.data * 1e7
 
     # clip
     torch.nn.utils.clip_grad_norm(net.parameters(), 1.0)
@@ -402,8 +398,8 @@ class AverageMeter(object):
 
 
 def adjust_learning_rate(optimizer, epoch):
-    """Sets the learning rate to the initial LR decayed by 2 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 50))
+    """Sets the learning rate to the initial LR decayed by 1 every 50 epochs"""
+    lr = args.lr * (0.1 ** (epoch // 100))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
